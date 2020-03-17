@@ -182,7 +182,7 @@ impl FromIterator<Location> for DataSet<f64> {
         for item in iter.into_iter() {
             let position = Position::from(&item);
             if item.province == "" {
-                let region = Region::Country { position, data: item.histogram };
+                let region = Region::Singluar { position, data: item.histogram };
                 regions.insert(item.region, region);
             } else if let Region::Provinces(provinces) = regions.entry(item.region).or_insert(provinces()) {
                 let province = Province { position, data: item.histogram };
@@ -197,7 +197,7 @@ impl FromIterator<Location> for DataSet<f64> {
 #[derive(Debug, Clone)]
 enum Region<T> {
     Provinces(BTreeMap<String, Province<T>>),
-    Country {
+    Singluar {
         position: Position,
         data: BTreeMap<Date, T>,
     },
@@ -209,14 +209,14 @@ impl<T> Region<T> {
             Region::Provinces(provinces) => {
                 Box::new(provinces.iter().map(|(name, province)| (name.as_str(), province)))
             }
-            Region::Country { .. } => Box::new(None.into_iter()),
+            Region::Singluar { .. } => Box::new(None.into_iter()),
         }
     }
 
     fn province(&self, province: &str) -> Option<&Province<T>> {
         match self {
             Region::Provinces(provinces) => provinces.get(province),
-            Region::Country { .. } => None,
+            Region::Singluar { .. } => None,
         }
     }
 }
@@ -227,7 +227,7 @@ impl<'s, T: Sum + Copy + 's> Totals<'s, T> for Region<T> {
             Region::Provinces(provinces) => {
                 Box::new(provinces.values().map(|p| p.data.clone()))
             }
-            Region::Country { data, .. } => {
+            Region::Singluar { data, .. } => {
                 Box::new(once(data.clone()))
             }
         }
@@ -255,9 +255,9 @@ impl Region<Counts> {
                 Provinces(provinces)
             }
             (
-                Country { position, data: confirmed },
-                Country { data: deaths, .. },
-                Country { data: recovered, .. },
+                Singluar { position, data: confirmed },
+                Singluar { data: deaths, .. },
+                Singluar { data: recovered, .. },
             ) => {
                 let position = *position;
                 let mut data = BTreeMap::new();
@@ -267,7 +267,7 @@ impl Region<Counts> {
                     let recovered = recovered[date];
                     data.insert(*date, Counts { confirmed, deaths, recovered });
                 }
-                Country { position, data }
+                Singluar { position, data }
             }
             (confirmed, deaths, recovered) => {
                 panic!("Mismatched regions: {:?} {:?} {:?}", confirmed, deaths, recovered);
