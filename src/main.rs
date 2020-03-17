@@ -1,8 +1,9 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::{FromIterator, Sum, once};
+use std::io::stdout;
 use structopt::StructOpt;
 
 const CONFIRMED_URL: &'static str = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv";
@@ -17,6 +18,8 @@ type Result<T> = ::std::result::Result<T, Error>;
 enum Args {
     /// List the countries and regions and their states and provinces
     List,
+    /// Dump the data in JSON form
+    Json,
     /// Query the time-series for a particular population
     Query {
         /// Display changes per day rather than totals
@@ -60,6 +63,9 @@ async fn main() -> Result<()> {
             }
 
             println!();
+        }
+        Args::Json => {
+            serde_json::to_writer_pretty(stdout(), &joined)?;
         }
         Args::Query { changes, region: Some(region), province: None } => {
             let dates = joined.region(&region).expect("Invalid region");
@@ -125,7 +131,8 @@ struct Location {
     histogram: BTreeMap<Date, f64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(transparent)]
 struct DataSet<T>(BTreeMap<String, Region<T>>);
 
 impl DataSet<f64> {
@@ -194,7 +201,7 @@ impl FromIterator<Location> for DataSet<f64> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 enum Region<T> {
     Provinces(BTreeMap<String, Province<T>>),
     Singluar {
@@ -280,7 +287,7 @@ fn provinces<T>() -> Region<T> {
     Region::Provinces(BTreeMap::new())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct Province<T> {
     position: Position,
     data: BTreeMap<Date, T>,
@@ -310,7 +317,7 @@ impl<'s, T: Sum + Copy + 's> Totals<'s, T> for Province<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 struct Position {
     latitude: f32,
     longitude: f32,
@@ -325,8 +332,9 @@ impl From<&Location> for Position {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(try_from="String")]
+#[serde(into="String")]
 struct Date {
     year: u32,
     month: u32,
@@ -335,13 +343,19 @@ struct Date {
 
 impl fmt::Display for Date {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:04}-{:02}-{:02}", self.year + 2000, self.month, self.day)
+        write!(f, "{:04}-{:02}-{:02}", self.year, self.month, self.day)
     }
 }
 
 impl fmt::Debug for Date {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self)
+    }
+}
+
+impl Into<String> for Date {
+    fn into(self) -> String {
+        format!("{}", self)
     }
 }
 
@@ -361,6 +375,11 @@ impl TryFrom<String> for Date {
 
     fn try_from(text: String) -> Result<Self> {
         if let [month, day, year] = &text.trim().split("/").collect::<Vec<_>>()[..] {
+            let year: u32 = year.parse()?;
+            let month = month.parse()?;
+            let day = day.parse()?;
+            Ok(Date { year: year + 2000, month, day })
+        } else if let [year, month, day] = &text.trim().split("-").collect::<Vec<_>>()[..] {
             let year = year.parse()?;
             let month = month.parse()?;
             let day = day.parse()?;
@@ -371,7 +390,7 @@ impl TryFrom<String> for Date {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 struct Counts {
     confirmed: f64,
     deaths: f64,
