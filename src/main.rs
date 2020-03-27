@@ -6,9 +6,9 @@ use std::iter::{FromIterator, Sum, once};
 use std::io::stdout;
 use structopt::StructOpt;
 
-const CONFIRMED_URL: &'static str = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv";
-const DEATHS_URL: &'static str = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv";
-const RECOVERED_URL: &'static str = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv";
+const CONFIRMED_URL: &'static str = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv";
+const DEATHS_URL: &'static str = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv";
+const RECOVERED_URL: &'static str = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv";
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = ::std::result::Result<T, Error>;
@@ -276,8 +276,54 @@ impl Region<Counts> {
                 }
                 Singluar { position, data }
             }
-            (confirmed, deaths, recovered) => {
-                panic!("Mismatched regions: {:?} {:?} {:?}", confirmed, deaths, recovered);
+            (
+                Singluar { position, data: confirmed },
+                deaths,
+                recovered,
+            ) => {
+                let position = *position;
+                let mut data = BTreeMap::new();
+                let deaths = deaths.totals().collect::<BTreeMap<_, _>>();
+                let recovered = recovered.totals().collect::<BTreeMap<_, _>>();
+                for (date, confirmed) in confirmed.iter() {
+                    let confirmed = *confirmed;
+                    let deaths = deaths[date];
+                    let recovered = recovered[date];
+                    data.insert(*date, Counts { confirmed, deaths, recovered });
+                }
+                Singluar { position, data }
+            }
+            (
+                confirmed,
+                Singluar { position, data: deaths },
+                recovered,
+            ) => {
+                let position = *position;
+                let mut data = BTreeMap::new();
+                let recovered = recovered.totals().collect::<BTreeMap<_, _>>();
+                for (date, confirmed) in confirmed.totals() {
+                    let confirmed = confirmed;
+                    let deaths = deaths[&date];
+                    let recovered = recovered[&date];
+                    data.insert(date, Counts { confirmed, deaths, recovered });
+                }
+                Singluar { position, data }
+            }
+            (
+                confirmed,
+                deaths,
+                Singluar { position, data: recovered },
+            ) => {
+                let position = *position;
+                let mut data = BTreeMap::new();
+                let deaths = deaths.totals().collect::<BTreeMap<_, _>>();
+                for (date, confirmed) in confirmed.totals() {
+                    let confirmed = confirmed;
+                    let deaths = deaths[&date];
+                    let recovered = recovered[&date];
+                    data.insert(date, Counts { confirmed, deaths, recovered });
+                }
+                Singluar { position, data }
             }
         }
     }
